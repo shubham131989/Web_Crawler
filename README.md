@@ -2,4 +2,4 @@
 
 Simple Web Crawler written in python
 
-This Web Crawler find gather links from the domain
+This Web Crawler  gather only links from the page
