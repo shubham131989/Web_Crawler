@@ -1,0 +1,82 @@
+TOKEN=$(curl -s -X POST \
+  https://anz.iam.checkmarx.net/auth/realms/<tenant>/protocol/openid-connect/token \
+  -d grant_type=refresh_token -d client_id=ast-app \
+  -d refresh_token=<API key> | jq -r .access_token)
+
+curl -X POST https://anz.ast.checkmarx.net/api/sast-results-predicates \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '[{"similarityId":"...","projectId":"...","severity":"HIGH","state":"CONFIRMED","comment":"..."}]'
+
+[checkmarx]
+cxone_access_control_url = https://anz.iam.checkmarx.net
+cxone_server = https://anz.ast.checkmarx.net
+cxone_tenant_name = <your tenant name>
+cxone_grant_type = refresh_token
+cxone_client_id = ast-app
+cxone_refresh_token = <API key>
+
+import json
+from CheckmarxPythonSDK.CxOne import sastResultsAPI
+from CheckmarxPythonSDK.CxOne.httpRequests import post_request
+
+# ---- inputs ----
+PROJECT_ID = "8c224581-ff45-42fa-8282-ee843d8737ba"
+SCAN_ID = "425f7460-367b-4966-a864-245ce68ed1f4"
+COMPONENT_MATCH = "src/payments/"   # substring matched against file paths
+COMMENT = "Confirmed after security review"
+BATCH = 100
+
+
+def matches_component(result) -> bool:
+    for node in result.nodes or []:
+        if COMPONENT_MATCH.lower() in (node.fileName or "").lower():
+            return True
+    return False
+
+
+def fetch_high_critical(scan_id):
+    offset, results = 0, []
+    while True:
+        page = sastResultsAPI.get_sast_results_by_scan_id(
+            scan_id=scan_id, severity=["HIGH", "CRITICAL"],
+            offset=offset, limit=BATCH,
+        )
+        results.extend(page.results)
+        if len(page.results) < BATCH:
+            return results
+        offset += BATCH
+
+
+def confirm(results):
+    predicates = [
+        {
+            "similarityId": str(r.similarityID),
+            "projectId": PROJECT_ID,
+            "severity": r.severity,        # unchanged
+            "state": "CONFIRMED",
+            "comment": COMMENT,
+        }
+        for r in results
+    ]
+    for i in range(0, len(predicates), BATCH):
+        resp = post_request(
+            relative_url="/api/sast-results-predicates",
+            data=json.dumps(predicates[i:i + BATCH]),
+        )
+        print(f"batch {i // BATCH + 1}: HTTP {resp.status_code}")
+
+
+if __name__ == "__main__":
+    targets = [r for r in fetch_high_critical(SCAN_ID)
+               if r.state != "CONFIRMED" and matches_component(r)]
+    print(f"{len(targets)} HIGH/CRITICAL results in '{COMPONENT_MATCH}' to confirm")
+    for r in targets:
+        print(f"  {r.severity:8} {r.queryName}  ({r.nodes[0].fileName})")
+    if targets:
+        confirm(targets)
+
+
+
+
+
