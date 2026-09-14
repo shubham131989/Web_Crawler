@@ -1,0 +1,3 @@
+python -c "from CheckmarxPythonSDK.CxOne import scannersResultsAPI as m; r=m.get_all_scanners_results_by_scan_id(scan_id='ef23ae99-7205-4677-b5c1-e6afd037c1e4', limit=200); rs = r['results'] if isinstance(r,dict) else r.results; sca=[x for x in rs if 'sca' in str(getattr(x,'type','')).lower()]; print(len(rs),'total',len(sca),'sca'); print(vars(sca[0]) if sca else 'no sca results')
+
+python -c "import inspect; from CheckmarxPythonSDK.CxOne.dto import SupplyChainRiskAction as A; print(inspect.signature(A.__init__)); print([x for x in dir(A) if not x.startswith('_')])"
